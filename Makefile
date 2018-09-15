@@ -10,15 +10,21 @@ out := build/riscv.bin
 
 QEMU=qemu-riscv64
 
+GDB=gdb
+
 run: build
 	$(QEMU) $(out)
 
 build: $(objects)
-	$(CC) $(flags) -o $(out) $(objects)
+	$(CC) $(flags) -O0 -g -o $(out) $(objects)
 
 %.o:
 	mkdir -p $(dir $@)
-	$(CC) -c -o $@ $(patsubst build/obj/%.o,src/%.c,$@)
+	$(CC) -c -g -o $@ $(patsubst build/obj/%.o,src/%.c,$@)
+
+debug:
+	$(MAKE) build CC=gcc
+	$(GDB) $(out)
 
 clean:
 	rm -rf build

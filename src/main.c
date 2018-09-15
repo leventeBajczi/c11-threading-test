@@ -1,43 +1,62 @@
 #include <stdio.h>
 #include <threads.h>
 
-#define NUM_THREADS 5
+unsigned int global_number = 1;
+mtx_t global_mutex;
 
-void do_once()
+
+int first_thread_funtion(void * data)
 {
-    printf("thread up\n");
-}
-
-static int threadData[NUM_THREADS];
-
-static once_flag flag = ONCE_FLAG_INIT;
-
-
-int threadFunction(void * data) {
-    call_once(&flag, do_once);
-    printf("cont.");
+    unsigned int n;
+    unsigned int cnt = 0;
+    printf("First thread up\n");
+    mtx_lock(&global_mutex);
+    while(1)
+    {
+        n = global_number;
+        cnt = 0;
+        for(; global_number>0; global_number--)
+            if(n%global_number == 0)
+                cnt++;
+        if(n%1000 == 0)printf("The number %u has %u divisors.\n", n, cnt);
+        cnd_signal((cnd_t*)data);
+        cnd_wait((cnd_t*)data, &global_mutex);
+    }
     return 0;
 }
+
+int second_thread_funtion(void * data)
+{  
+    unsigned int cnt = 2;
+    printf("Second thread up\n");
+    mtx_lock(&global_mutex);
+    while(1)
+    {
+        cnd_signal((cnd_t*)data);
+        cnd_wait((cnd_t*)data, &global_mutex);
+        global_number = cnt++;
+    }
+    return 0;
+}
+
 
 int main(void) {
-    thrd_t threadId[NUM_THREADS];
+    thrd_t first_thread_id, second_thread_id;
+    int first_thread_return, second_thread_return;
+    cnd_t condition;
 
-    // init thread data
-    for (int i=0; i < NUM_THREADS; ++i)
-        threadData[i] = i;
+    cnd_init(&condition);
 
-    // start NUM_THREADS amount of threads
-    for (int i=0; i < NUM_THREADS; ++i) {
-        if (thrd_create(threadId+i, threadFunction, threadData+i) != thrd_success) {
-            printf("%d-th thread create error\n", i);
-            return 0;
-        }
-        thrd_sleep(&(struct timespec){.tv_sec=2}, NULL);
-    }
+    mtx_init(&global_mutex, mtx_plain);
+    mtx_lock(&global_mutex);
+    
+    thrd_create(&first_thread_id, first_thread_funtion, &condition);
+    thrd_create(&second_thread_id, second_thread_funtion, &condition);
 
-    // wait until all threads terminates
-    for (int i=0; i < NUM_THREADS; ++i)
-        thrd_join(threadId[i], NULL);
+    mtx_unlock(&global_mutex);
 
-    return 0;
+    thrd_join(first_thread_id, &first_thread_return);
+    thrd_join(second_thread_id, &second_thread_return);
+
+    return first_thread_return || second_thread_return;
 }
